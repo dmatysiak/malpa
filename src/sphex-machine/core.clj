@@ -1,20 +1,19 @@
-(ns malpa.core
+(ns sphex-machine.core
   (:require [clojure.data.json :as json]
             [clojure.walk :as walk]
             [clojure.string :as str]
             [clojure.tools.cli :refer [parse-opts]]
-            [clojure.tools.logging :as log]
-            [clojure.core.match :refer [match]])
+            [clojure.tools.logging :as log])
   ;; Third-party
   (:require [compojure.core :refer [defroutes GET POST PUT]])
   (:require [ring.adapter.jetty :refer [run-jetty]]))
 
 
 (def app-version
-  (merge {:name "malpa"}
+  (merge {:name "sphex-machine"}
          (zipmap [:major :minor :micro]
                  (str/split
-                  (first (str/split (System/getProperty "malpa.version") #"-"))
+                  (first (str/split (System/getProperty "sphex-machine.version") #"-"))
                   #"\."))))
 
 (def version-string
@@ -23,6 +22,11 @@
           (:major app-version)
           (:minor app-version)
           (:micro app-version)))
+
+;;
+;; Session and user infos
+;;
+(def model-ids (atom {}))
 
 ;;
 ;; Utils
@@ -49,6 +53,13 @@
   [query]
   (walk/keywordize-keys (json/read-str query :key-fn keyword)))
 
+(defn unpack-request
+  "Destructures the request."
+  [body]
+  (let [body-map (unpack-json (slurp body))
+        {request :request payload :payload} body-map]
+    [(keyword request) payload]))
+
 (defn response
   "Wraps contents in response header and generates JSON response to
   query."
@@ -74,9 +85,22 @@
 
 (defn not-found-error
   "Generates an error response."
-  [msg]
-  (response {:errors [{"msg" msg}]} 
+  [msg & args]
+  (response {:error [{"msg" (apply format msg (map name args))}]}
             404))
+
+;;
+;; Actions
+;;
+(defn model-handler
+  [request]
+  (let [action (:action request)
+        payload (:payload request)]
+    (case action
+      :create-model (let [model-id (new-uuid)]
+                      (swap! model-ids assoc model-id nil)
+                      (response {:model-id model-id}))
+      (not-found-error "No such resource '%s'" action))))
 
 ;;
 ;; API
@@ -84,7 +108,13 @@
 (defroutes routes
   (GET "/version"
        []
-       (response {:version app-version})))
+       (response {:version app-version}))
+  (GET "/models"
+       []
+       (response {:models @model-ids}))
+  (POST "/models"
+        {body :body}
+        (model-handler (unpack-request body))))
 
 ;;
 ;; Main
@@ -99,7 +129,7 @@
                "Port number is out of range."]]])
 
 (defn -main
-  "Start an instance of Malpa."
+  "Start an instance of Sphex-Machine."
   [& args]
   
   (let [parsed-opts (parse-opts args cli-options)
@@ -118,12 +148,12 @@
       (printf "%s\n" version-string)
       
       (not port)
-      (printf "%s\n%s" version-string (:summary parsed-opts))
+      (printf "%s\n%s\n" version-string (:summary parsed-opts))
       
       :else
       (do
         (when debug-mode
-          (System/setProperty "malpa.debug_mode" debug-mode))
+          (System/setProperty "sphex-machine.debug_mode" debug-mode))
         (run-jetty #'routes {:port port :join? false})))))
 
 

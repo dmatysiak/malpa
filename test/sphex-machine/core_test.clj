@@ -1,6 +1,6 @@
-(ns malpa.core-test
+(ns sphex-machine.core-test
   (:require [clojure.test :refer :all]
-            [malpa.core :refer :all]))
+            [sphex-machine.core :refer :all]))
 
 (deftest a-test
   (testing "FIXME, I fail."
